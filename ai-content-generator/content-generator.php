@@ -1,6 +1,6 @@
 <?php
 /*
-Plugin Name: AI Content for WordPress
+Plugin Name: AI Content Generator for WP
 Description: Generate blog posts based on a user-provided title. Powered by AI.
 Version: 1.0
 Author: Arif Nezami
@@ -10,7 +10,8 @@ if (!defined('ABSPATH')) exit; // Exit if accessed directly
 
 // Enqueue JavaScript and CSS
 function content_generator_enqueue_scripts() {
-    wp_enqueue_script('content-generator-js', plugin_dir_url(__FILE__) . 'content-generator.js', array('jquery'), null, true);
+   wp_enqueue_script('content-generator-js', plugin_dir_url(__FILE__) . 'content-generator.js', array('jquery'), '1.0.0', true);
+
     wp_localize_script('content-generator-js', 'ContentGenerator', array(
         'ajaxurl' => admin_url('admin-ajax.php'),
     ));
@@ -75,44 +76,51 @@ function content_generator_generate_content() {
         ]
     ];
     
-    // Initialize cURL session
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
+
     
-    // Set cURL options
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $openaiApiKey
-    ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data)); // Send the data in JSON format
+    // Set up headers and body for the HTTP POST request
+    $args = [
+        'body'        => wp_json_encode($data),
+        'headers'     => [
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer ' . $openaiApiKey
+        ],
+        'timeout'     => 60, // Response timeout
+        'redirection' => 5, // Number of allowed redirections
+        'blocking'    => true, // If set to false, the request returns immediately and does not wait for the remote server's response
+        'httpversion' => '1.1', // Set HTTP version
+        'sslverify'   => true // Enable SSL certificate verification
+    ];
     
-    // Execute the cURL session
-    $response = curl_exec($ch);
+    // Make the HTTP POST request
+    $response = wp_remote_post('https://api.openai.com/v1/chat/completions', $args);
     
     // Check for errors
-    if (curl_errno($ch)) {
-      //  echo 'cURL error: ' . curl_error($ch);
+    if (is_wp_error($response)) {
+        $error_message = $response->get_error_message();
+        echo "Something went wrong.";
     } else {
-        // Print response
-        //echo $response;
+        // Print the body of the response
+      //  echo wp_remote_retrieve_body($response);
     }
     
-    // Close cURL session
-    curl_close($ch);
-    
+
 
     if (!$response) {
         wp_send_json_error('Failed to connect to OpenAI API');
     }
 
-    $data = json_decode($response, true);
+    $response = wp_remote_retrieve_body($response);
+    
+    $data = wp_json_decode($response, true);
+    
     
     if (isset($data['choices'][0]['message']['content'])) {
         $content = trim($data['choices'][0]['message']['content']);
         wp_send_json_success(array('content' => $data['choices'][0]['message']['content']));
     } else {
-        wp_send_json_error('Failed to generate content'.$response);
+        wp_send_json_error('Failed to generate content'.$data);
+        print_r( $response );
     }
 }
 
